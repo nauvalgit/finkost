@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart'; // Pastikan sudah ada di pubspec.yaml
+import 'package:flutter_bloc/flutter_bloc.dart'; 
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:finkost/core/presentation/theme/app_theme.dart';
-// Import LottieSplashPage yang baru
-import 'package:finkost/features/authentication/presentation/pages/lottie_splash_page.dart';
 
+import 'package:finkost/features/authentication/presentation/pages/welcome_page.dart';
+import 'package:finkost/features/authentication/presentation/pages/login_page.dart';
+import 'package:finkost/features/authentication/presentation/pages/signup_page.dart';
+import 'package:finkost/features/main_navigation/presentation/pages/main_navigation_page.dart';
+
+import 'package:finkost/features/authentication/presentation/bloc/auth_bloc.dart';
+import 'package:finkost/features/authentication/presentation/bloc/auth_state.dart';
 
 class MyApp extends StatelessWidget {
-  // seenWelcomeScreen akan dilewatkan ke LottieSplashPage, tidak lagi di MyApp
-  final bool seenWelcomeScreen; // Ubah nama agar tidak bentrok dengan logika internal LottieSplashPage
+  final bool seenWelcomeScreen;
 
   const MyApp({Key? key, required this.seenWelcomeScreen}) : super(key: key);
 
@@ -17,20 +22,42 @@ class MyApp extends StatelessWidget {
       title: 'Finkost App',
       theme: AppTheme.lightTheme,
       debugShowCheckedModeBanner: false,
-
-      // --- 2. TAMBAHKAN PROPERTI INI UNTUK MEMPERBAIKI DATE PICKER ---
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
       supportedLocales: const [
-        Locale('id', 'ID'), // Mengaktifkan lokalisasi Bahasa Indonesia
+        Locale('id', 'ID'),
       ],
-      // ----------------------------------------------------------------
+      // Definisi rute sesuai struktur file kamu
+      routes: {
+        '/main': (context) => const MainNavigationPage(),
+        '/welcome': (context) => const WelcomePage(),
+        '/login': (context) => const LoginPage(),
+        '/signup': (context) => const SignupPage(),
+      },
+      home: BlocBuilder<AuthBloc, AuthState>(
+        builder: (context, state) {
+          if (state is Authenticated) {
+            return const MainNavigationPage();
+          }
+          
+          if (state is Unauthenticated) {
+            if (seenWelcomeScreen) {
+              return const MainNavigationPage(); 
+            } else {
+              return const WelcomePage(); 
+            }
+          }
 
-      // Home selalu LottieSplashPage sebagai titik masuk pertama
-      home: LottieSplashPage(seenWelcomeScreen: seenWelcomeScreen),
+          return const Scaffold(
+            body: Center(
+              child: CircularProgressIndicator(),
+            ),
+          );
+        },
+      ),
     );
   }
 }

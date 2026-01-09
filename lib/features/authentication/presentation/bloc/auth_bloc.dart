@@ -7,6 +7,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   final AuthRepository authRepository;
 
   AuthBloc({required this.authRepository}) : super(AuthInitial()) {
+    
     on<AppStarted>((event, emit) async {
       try {
         final user = await authRepository.currentUser;
@@ -28,6 +29,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
           password: event.password,
           name: event.name,
         );
+        
         final user = await authRepository.currentUser;
         if (user != null) {
           emit(Authenticated(user));
@@ -46,6 +48,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
           email: event.email,
           password: event.password,
         );
+        
         final user = await authRepository.currentUser;
         if (user != null) {
           emit(Authenticated(user));

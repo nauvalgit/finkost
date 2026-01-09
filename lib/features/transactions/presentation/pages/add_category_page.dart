@@ -1,304 +1,332 @@
 import 'package:flutter/material.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart'; // Pastikan sudah di pubspec.yaml
-
-// ---- MODEL DUMMY IKON (Nanti bisa diganti dengan daftar ikon yang lebih terstruktur) ----
-class IconItem {
-  final String id; // ID unik ikon
-  final IconData iconData; // Data ikon FontAwesome
-
-  IconItem({required this.id, required this.iconData});
-}
-
-// Kumpulan ikon dummy yang dikelompokkan
-final Map<String, List<IconItem>> dummyIconGroups = {
-  'Hiburan': [
-    IconItem(id: 'gamepad', iconData: FontAwesomeIcons.gamepad),
-    IconItem(id: 'ghost', iconData: FontAwesomeIcons.ghost),
-    IconItem(id: 'cube', iconData: FontAwesomeIcons.cube),
-    IconItem(id: 'circle', iconData: FontAwesomeIcons.circle),
-    IconItem(id: 'baseballBall', iconData: FontAwesomeIcons.baseball),
-    IconItem(id: 'dice', iconData: FontAwesomeIcons.dice),
-    IconItem(id: 'cloud', iconData: FontAwesomeIcons.cloud),
-    IconItem(id: 'windowMinimize', iconData: FontAwesomeIcons.windowMinimize),
-    IconItem(id: 'rotateRight', iconData: FontAwesomeIcons.rotateRight),
-    IconItem(id: 'arrowUp', iconData: FontAwesomeIcons.arrowUp),
-  ],
-  'Makanan': [
-    IconItem(id: 'wheatAwn', iconData: FontAwesomeIcons.wheatAwn),
-    IconItem(id: 'pizzaSlice', iconData: FontAwesomeIcons.pizzaSlice),
-    IconItem(id: 'burger', iconData: FontAwesomeIcons.burger),
-    IconItem(id: 'moneyBill', iconData: FontAwesomeIcons.moneyBill),
-    IconItem(id: 'bone', iconData: FontAwesomeIcons.bone),
-    IconItem(id: 'mugHot', iconData: FontAwesomeIcons.mugHot),
-    IconItem(id: 'iceCream', iconData: FontAwesomeIcons.iceCream),
-    IconItem(id: 'cookie', iconData: FontAwesomeIcons.cookie),
-    IconItem(id: 'utensils', iconData: FontAwesomeIcons.utensils),
-    IconItem(id: 'lightbulb', iconData: FontAwesomeIcons.lightbulb),
-  ],
-  'Kehidupan': [
-    IconItem(id: 'coffee', iconData: FontAwesomeIcons.mugHot), // Contoh duplikasi ikon
-    IconItem(id: 'car', iconData: FontAwesomeIcons.car),
-    IconItem(id: 'book', iconData: FontAwesomeIcons.book),
-    IconItem(id: 'bed', iconData: FontAwesomeIcons.bed),
-    IconItem(id: 'bench', iconData: FontAwesomeIcons.chair),
-    // Tambahkan lebih banyak ikon sesuai kebutuhan Anda
-  ],
-  // Tambahkan grup ikon lain di sini
-};
-// ---------------------------------------------------------------------------------
-
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:finkost/features/transactions/presentation/bloc/transaction_bloc.dart';
+import 'package:finkost/models/category_local_schema.dart';
+import 'package:finkost/core/utils/icon_mapper.dart';
 
 class AddCategoryPage extends StatefulWidget {
-  const AddCategoryPage({Key? key}) : super(key: key);
+  final String categoryType;
+  // Tambahkan parameter opsional category untuk mode Edit
+  final CategoryLocalSchema? category;
+
+  const AddCategoryPage({
+    Key? key, 
+    required this.categoryType, 
+    this.category
+  }) : super(key: key);
 
   @override
   State<AddCategoryPage> createState() => _AddCategoryPageState();
 }
 
 class _AddCategoryPageState extends State<AddCategoryPage> {
-  bool isExpense = true; // true = Pengeluaran, false = Pemasukan
-  final TextEditingController _categoryNameController = TextEditingController();
-  IconData? _selectedIcon; // Ikon yang dipilih pengguna
+  final _nameController = TextEditingController();
+  String? _selectedIconKey;
+  late bool _isExpense;
+
+  // Getter untuk mengecek apakah dalam mode edit
+  bool get isEditMode => widget.category != null;
+
+  @override
+  void initState() {
+    super.initState();
+    _isExpense = widget.categoryType == 'expense';
+
+    // Jika mode edit, isi field dengan data kategori yang sudah ada
+    if (isEditMode) {
+      _nameController.text = widget.category!.name;
+      _selectedIconKey = widget.category!.icon;
+    }
+  }
 
   @override
   void dispose() {
-    _categoryNameController.dispose();
+    _nameController.dispose();
     super.dispose();
   }
 
+  void _showAuthModal(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.person_add_disabled, size: 60, color: Color(0xFF6B1D89)),
+            const SizedBox(height: 16),
+            const Text("Login Diperlukan", 
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            const Text("Kamu perlu masuk ke akun Finkost untuk mengelola kategori kustom kamu sendiri.", 
+              textAlign: TextAlign.center),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context); 
+                  Navigator.pushNamed(context, '/login');
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF6B1D89),
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                child: const Text("Login / Daftar", style: TextStyle(color: Colors.white)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _saveCategory() {
-    final String categoryName = _categoryNameController.text.trim();
-    if (categoryName.isEmpty) {
+    if (_nameController.text.isNotEmpty && _selectedIconKey != null) {
+      if (isEditMode) {
+        // Logika Update
+        final updatedCat = widget.category!
+          ..name = _nameController.text
+          ..type = _isExpense ? 'expense' : 'income'
+          ..icon = _selectedIconKey;
+        
+        context.read<TransactionBloc>().add(UpdateCategory(updatedCat));
+      } else {
+        // Logika Add
+        final newCat = CategoryLocalSchema.create(
+          name: _nameController.text,
+          type: _isExpense ? 'expense' : 'income',
+          icon: _selectedIconKey,
+          userId: '',
+        );
+        context.read<TransactionBloc>().add(AddCategory(newCat));
+      }
+    } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Nama kategori tidak boleh kosong')),
+        const SnackBar(content: Text('Mohon isi nama dan pilih ikon')),
       );
-      return;
     }
-    if (_selectedIcon == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Pilih ikon untuk kategori')),
-      );
-      return;
-    }
-
-    print('Menyimpan kategori baru:');
-    print('Tipe: ${isExpense ? 'Pengeluaran' : 'Pemasukan'}');
-    print('Nama: $categoryName');
-    print('Ikon: $_selectedIcon');
-
-    // TODO: Implementasi logika penyimpanan ke Firestore/Isar di sini
-    // Setelah berhasil disimpan, mungkin pop halaman ini
-    Navigator.of(context).pop();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Bagian App Bar Kustom (Warna Ungu Gradient)
-          Container(
-            padding: const EdgeInsets.only(top: 48.0, bottom: 20.0, left: 16.0, right: 16.0),
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Color(0xFFE0BBE4), Color(0xFF957DAD)], // Gradient ungu
-              ),
-              borderRadius: BorderRadius.vertical(bottom: Radius.circular(30)),
-            ),
-            child: Column(
-              children: [
-                Row(
+      body: BlocConsumer<TransactionBloc, TransactionState>(
+        listener: (context, state) {
+          if (state is TransactionActionSuccess) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(state.message)));
+            if (Navigator.canPop(context)) {
+              Navigator.pop(context);
+            }
+          } else if (state is TransactionError) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(state.message)));
+          } else if (state is TransactionAuthRequired) {
+            _showAuthModal(context);
+          }
+        },
+        buildWhen: (previous, current) => 
+            current is TransactionLoading || 
+            current is TransactionLoaded || 
+            current is TransactionInitial,
+        builder: (context, state) {
+          if (state is TransactionLoading) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          return Column(
+            children: [
+              // --- HEADER GRADASI (TANPA CELAH) ---
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.only(
+                  top: MediaQuery.of(context).padding.top + 10,
+                  bottom: 30,
+                  left: 20,
+                  right: 20,
+                ),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Color(0xFFE0BBE4), Color(0xFFB7A9D8)],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                  borderRadius: BorderRadius.vertical(bottom: Radius.circular(30)),
+                ),
+                child: Column(
                   children: [
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back, color: Colors.white),
-                      onPressed: () {
-                        Navigator.of(context).pop(); // Kembali ke halaman sebelumnya
-                      },
-                    ),
-                    const Expanded(
-                      child: Text(
-                        'Tambahkan Kategori',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.arrow_back, color: Colors.white),
+                          onPressed: () => Navigator.of(context).pop(),
                         ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.check, color: Colors.white), // Ikon centang
-                      onPressed: _saveCategory, // Panggil fungsi simpan
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                // Toggle Button Pengeluaran / Pemasukan
-                _buildToggleButtons(),
-              ],
-            ),
-          ),
-
-          // Bagian Input Nama Kategori
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: TextField(
-              controller: _categoryNameController,
-              decoration: InputDecoration(
-                hintText: 'Silakan masukkan nama kategori',
-                hintStyle: TextStyle(color: const Color(0xFF957DAD).withOpacity(0.6)),
-                filled: true,
-                fillColor: const Color(0xFF957DAD).withOpacity(0.1),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(15),
-                  borderSide: BorderSide.none,
-                ),
-                prefixIcon: Icon(Icons.edit, color: const Color(0xFF957DAD).withOpacity(0.8)),
-              ),
-              style: const TextStyle(color: Color(0xFF957DAD)),
-            ),
-          ),
-
-          // Bagian Daftar Ikon
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: dummyIconGroups.entries.map((entry) {
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 12.0),
-                        child: Text(
-                          entry.key, // Nama grup (Hiburan, Makanan, dll.)
+                        Text(
+                          isEditMode ? "Ubah Kategori" : "Tambahkan Kategori", 
                           style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF957DAD),
+                            color: Colors.white, 
+                            fontSize: 18, 
+                            fontWeight: FontWeight.bold
+                          )
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.check, color: Colors.white),
+                          onPressed: _saveCategory,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _buildFancyToggleButton("Pengeluaran", true),
+                        const SizedBox(width: 10),
+                        _buildFancyToggleButton("Pemasukan", false),
+                      ],
+                    ),
+                    const SizedBox(height: 25),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 15),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(15),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.05),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          )
+                        ]
+                      ),
+                      child: TextField(
+                        controller: _nameController,
+                        style: const TextStyle(color: Colors.black87, fontSize: 16),
+                        decoration: const InputDecoration(
+                          hintText: "Nama kategori",
+                          hintStyle: TextStyle(color: Colors.grey),
+                          border: InputBorder.none,
+                          prefixIcon: Padding(
+                            padding: EdgeInsets.all(12.0),
+                            child: FaIcon(
+                              FontAwesomeIcons.tag,
+                              color: Color(0xFF6B1D89),
+                              size: 20,
+                            ),
                           ),
                         ),
                       ),
-                      GridView.builder(
-                        shrinkWrap: true, // Agar GridView tidak mengambil seluruh ruang
-                        physics: const NeverScrollableScrollPhysics(), // Nonaktifkan scroll GridView
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 6, // 6 ikon per baris
-                          crossAxisSpacing: 8,
-                          mainAxisSpacing: 8,
-                          childAspectRatio: 1.0,
-                        ),
-                        itemCount: entry.value.length,
-                        itemBuilder: (context, index) {
-                          final iconItem = entry.value[index];
-                          return GestureDetector(
-                            onTap: () {
-                              setState(() {
-                                _selectedIcon = iconItem.iconData;
-                              });
-                            },
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: _selectedIcon == iconItem.iconData
-                                    ? const Color(0xFF957DAD).withOpacity(0.5) // Warna saat dipilih
-                                    : const Color(0xFFE0BBE4).withOpacity(0.3), // Warna default
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(
-                                  color: _selectedIcon == iconItem.iconData
-                                      ? const Color(0xFF957DAD)
-                                      : Colors.transparent,
-                                  width: 2,
-                                ),
-                              ),
-                              child: Center(
-                                child: FaIcon(
-                                  iconItem.iconData,
-                                  color: _selectedIcon == iconItem.iconData
-                                      ? Colors.white
-                                      : const Color(0xFF957DAD),
-                                  size: 24,
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                      const SizedBox(height: 10), // Jeda antar grup
-                    ],
-                  );
-                }).toList(),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ),
-        ],
+
+              const SizedBox(height: 10),
+
+              // Grid Ikon
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  children: IconMapper.groupedIcons.entries.map((entry) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 12.0),
+                          child: Text(
+                            entry.key,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              color: Colors.black87,
+                            ),
+                          ),
+                        ),
+                        GridView.builder(
+                          shrinkWrap: true,
+                          padding: const EdgeInsets.only(bottom: 16),
+                          physics: const NeverScrollableScrollPhysics(),
+                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 5,
+                            mainAxisSpacing: 10,
+                            crossAxisSpacing: 10,
+                          ),
+                          itemCount: entry.value.length,
+                          itemBuilder: (context, index) {
+                            final key = entry.value[index];
+                            final isSelected = _selectedIconKey == key;
+                            return InkWell(
+                              onTap: () => setState(() => _selectedIconKey = key),
+                              borderRadius: BorderRadius.circular(15),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
+                                decoration: BoxDecoration(
+                                  color: isSelected ? const Color(0xFF6B1D89) : Colors.grey[100],
+                                  borderRadius: BorderRadius.circular(15),
+                                  boxShadow: isSelected ? [
+                                    BoxShadow(
+                                      color: const Color(0xFF6B1D89).withOpacity(0.3),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 4),
+                                    )
+                                  ] : null,
+                                ),
+                                child: Center(
+                                  child: FaIcon(
+                                    IconMapper.mapStringToIconData(key),
+                                    color: isSelected ? Colors.white : Colors.black54,
+                                    size: 22,
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    );
+                  }).toList(),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
 
-  // Widget _buildToggleButtons sama seperti di AddTransactionPage
-  Widget _buildToggleButtons() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.3),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Expanded(
-            child: GestureDetector(
-              onTap: () {
-                setState(() {
-                  isExpense = true;
-                });
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                decoration: BoxDecoration(
-                  color: isExpense ? Colors.white : Colors.transparent,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  'Pengeluaran',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: isExpense ? const Color(0xFF957DAD) : Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
+  Widget _buildFancyToggleButton(String text, bool isForExpense) {
+    final isSelected = _isExpense == isForExpense;
+    return Expanded(
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            _isExpense = isForExpense;
+          });
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+          decoration: BoxDecoration(
+            color: isSelected ? const Color(0xFF6B1D89) : Colors.white.withOpacity(0.5),
+            borderRadius: BorderRadius.circular(25),
+            border: Border.all(
+              color: isSelected ? Colors.transparent : Colors.white70,
+              width: 1,
             ),
           ),
-          Expanded(
-            child: GestureDetector(
-              onTap: () {
-                setState(() {
-                  isExpense = false;
-                });
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                decoration: BoxDecoration(
-                  color: !isExpense ? Colors.white : Colors.transparent,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  'Pemasukan',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: !isExpense ? const Color(0xFF957DAD) : Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
+          child: Text(
+            text,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: isSelected ? Colors.white : Colors.black87,
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
             ),
           ),
-        ],
+        ),
       ),
     );
   }

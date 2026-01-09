@@ -1,5 +1,5 @@
 import 'package:equatable/equatable.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // Untuk objek User
+import 'package:firebase_auth/firebase_auth.dart'; 
 
 abstract class AuthState extends Equatable {
   const AuthState();
@@ -13,7 +13,7 @@ class AuthInitial extends AuthState {}
 class AuthLoading extends AuthState {}
 
 class Authenticated extends AuthState {
-  final User user; // Simpan objek User yang sedang login
+  final User user; 
   const Authenticated(this.user);
 
   @override

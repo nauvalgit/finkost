@@ -1,248 +1,573 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // Untuk TextInputFormatter
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:intl/intl.dart'; // Untuk NumberFormat
+import 'package:finkost/features/transactions/presentation/bloc/transaction_bloc.dart';
+import 'package:finkost/models/category_local_schema.dart';
+import 'package:finkost/core/utils/icon_mapper.dart';
 import 'package:finkost/features/transactions/presentation/pages/add_category_page.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart'; // Untuk ikon, pastikan sudah ditambahkan di pubspec.yaml
-
-// ---- MODEL DUMMY KATEGORI (Nanti akan diganti dengan data asli dari Firestore/Isar) ----
-class CategoryItem {
-  final String id;
-  final String name;
-  final IconData icon;
-  final String type; // 'expense' atau 'income'
-
-  CategoryItem({required this.id, required this.name, required this.icon, required this.type});
-}
-
-// Data dummy untuk Pengeluaran
-final List<CategoryItem> dummyExpenseCategories = [
-  CategoryItem(id: '1', name: 'Tabungan', icon: FontAwesomeIcons.wallet, type: 'expense'),
-  CategoryItem(id: '2', name: 'Belanja', icon: FontAwesomeIcons.cartShopping, type: 'expense'),
-  CategoryItem(id: '3', name: 'Makanan', icon: FontAwesomeIcons.utensils, type: 'expense'),
-  CategoryItem(id: '4', name: 'Telepon', icon: FontAwesomeIcons.phone, type: 'expense'),
-  CategoryItem(id: '5', name: 'Hiburan', icon: FontAwesomeIcons.gamepad, type: 'expense'),
-  CategoryItem(id: '6', name: 'Pendidikan', icon: FontAwesomeIcons.graduationCap, type: 'expense'),
-  CategoryItem(id: '7', name: 'Kecantikan', icon: FontAwesomeIcons.handSparkles, type: 'expense'),
-  CategoryItem(id: '8', name: 'Olahraga', icon: FontAwesomeIcons.baseball, type: 'expense'),
-  CategoryItem(id: '9', name: 'Sosial', icon: FontAwesomeIcons.users, type: 'expense'),
-  CategoryItem(id: '10', name: 'Transportasi', icon: FontAwesomeIcons.bus, type: 'expense'),
-  CategoryItem(id: '11', name: 'Pakaian', icon: FontAwesomeIcons.shirt, type: 'expense'),
-  CategoryItem(id: '12', name: 'Mobil', icon: FontAwesomeIcons.car, type: 'expense'),
-  CategoryItem(id: '13', name: 'Minuman', icon: FontAwesomeIcons.mugHot, type: 'expense'),
-  CategoryItem(id: '14', name: 'Rokok', icon: FontAwesomeIcons.smoking, type: 'expense'),
-  CategoryItem(id: '15', name: 'Elektronik', icon: FontAwesomeIcons.laptop, type: 'expense'),
-  CategoryItem(id: '16', name: 'Bepergian', icon: FontAwesomeIcons.plane, type: 'expense'),
-  CategoryItem(id: '17', name: 'Kesehatan', icon: FontAwesomeIcons.heartPulse, type: 'expense'),
-  CategoryItem(id: '18', name: 'Peliharaan', icon: FontAwesomeIcons.cat, type: 'expense'),
-];
-
-// Data dummy untuk Pemasukan
-final List<CategoryItem> dummyIncomeCategories = [
-  CategoryItem(id: '19', name: 'uuu', icon: FontAwesomeIcons.circleQuestion, type: 'income'),
-  CategoryItem(id: '20', name: 'Investasi', icon: FontAwesomeIcons.arrowTrendUp, type: 'income'),
-  CategoryItem(id: '21', name: 'Gaji', icon: FontAwesomeIcons.moneyBillWave, type: 'income'),
-  CategoryItem(id: '22', name: 'Penghargaan', icon: FontAwesomeIcons.award, type: 'income'),
-  CategoryItem(id: '23', name: 'Paruh Waktu', icon: FontAwesomeIcons.briefcase, type: 'income'),
-  CategoryItem(id: '24', name: 'Lain-lain', icon: FontAwesomeIcons.ellipsis, type: 'income'),
-];
-// ---------------------------------------------------------------------------------
-
+import 'package:finkost/features/transactions/domain/entities/transaction.dart';
 
 class AddTransactionPage extends StatefulWidget {
-  const AddTransactionPage({Key? key}) : super(key: key);
+  // Parameter transaction untuk mode Edit Transaksi
+  final Transaction? transaction;
+
+  const AddTransactionPage({Key? key, this.transaction}) : super(key: key);
 
   @override
   State<AddTransactionPage> createState() => _AddTransactionPageState();
 }
 
 class _AddTransactionPageState extends State<AddTransactionPage> {
-  // true = Pengeluaran, false = Pemasukan
-  bool isExpense = true; 
+  bool isExpense = true;
+  CategoryLocalSchema? _selectedCategory;
+  final _amountController = TextEditingController();
+  final _descController = TextEditingController();
+
+  // Getter untuk mengecek apakah sedang dalam mode edit transaksi
+  bool get isEditMode => widget.transaction != null;
+
+  @override
+  void initState() {
+    super.initState();
+    
+    // Load Kategori
+    context.read<TransactionBloc>().add(const LoadCategories(type: 'expense'));
+    context.read<TransactionBloc>().add(const LoadCategories(type: 'income'));
+
+    // Jika mode edit transaksi, isi field dengan data yang sudah ada
+    if (isEditMode) {
+      isExpense = widget.transaction!.transactionType == 'expense';
+      
+      // Format angka ke ribuan untuk controller
+      final formatter = NumberFormat.decimalPattern('id');
+      _amountController.text = formatter.format(widget.transaction!.amount.toInt());
+      
+      _descController.text = widget.transaction!.description ?? '';
+    }
+  }
+
+  @override
+  void dispose() {
+    _amountController.dispose();
+    _descController.dispose();
+    super.dispose();
+  }
+
+  void _clearInputFields() {
+    _amountController.clear();
+    _descController.clear();
+    setState(() {
+      _selectedCategory = null;
+    });
+    if (isEditMode) Navigator.pop(context); // Kembali ke dashboard setelah edit
+  }
+
+  // LOGIKA BARU: Dialog Peringatan jika pengeluaran melebihi budget
+  void _showOverbudgetAlert(double currentTotal, double limit, double newAmount, Transaction data) {
+    final currencyFormat = NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0);
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 30),
+            SizedBox(width: 10),
+            Text("Overbudget Alert!", style: TextStyle(fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Text(
+          "Transaksi ini akan membuat pengeluaranmu bulan ini (${currencyFormat.format(currentTotal + newAmount)}) "
+          "melebihi batas anggaran (${currencyFormat.format(limit)}).\n\nTetap simpan?",
+          style: const TextStyle(fontSize: 15),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Batal", style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context); // Tutup Dialog
+              _executeSave(data); // Lanjutkan Simpan
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text("Ya, Simpan", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Fungsi pemisah untuk eksekusi kirim event ke Bloc
+  void _executeSave(Transaction data) {
+    if (isEditMode) {
+      context.read<TransactionBloc>().add(UpdateTransaction(data));
+    } else {
+      context.read<TransactionBloc>().add(AddTransaction(data));
+    }
+  }
+
+  void _processTransaction() {
+    if (_selectedCategory == null || _amountController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Kategori dan jumlah harus diisi.')),
+      );
+      return;
+    }
+
+    final cleanAmount = _amountController.text.replaceAll('.', '');
+    final amount = double.tryParse(cleanAmount);
+
+    if (amount == null || amount <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Jumlah tidak valid.')),
+      );
+      return;
+    }
+
+    final transactionData = Transaction(
+      id: isEditMode ? widget.transaction!.id : null,
+      firestoreId: isEditMode ? widget.transaction!.firestoreId : null,
+      amount: amount,
+      categoryName: _selectedCategory!.name,
+      categoryIcon: _selectedCategory!.icon ?? 'question',
+      transactionType: isExpense ? 'expense' : 'income',
+      transactionDate: isEditMode ? widget.transaction!.transactionDate : DateTime.now(),
+      description: _descController.text.isNotEmpty ? _descController.text : null,
+      userId: isEditMode ? widget.transaction!.userId : '',
+    );
+
+    // LOGIKA PROTEKSI ANGGARAN: Cek status budget di Bloc State
+    final state = context.read<TransactionBloc>().state;
+    if (state is TransactionLoaded && isExpense) {
+      double currentExpense = (state.monthlyStatistics?['expense'] as num?)?.toDouble() ?? 0.0;
+      double budgetLimit = state.monthlyBudget;
+
+      // Jika ada limit budget dan transaksi baru ini mengakibatkan overbudget
+      if (budgetLimit > 0 && (currentExpense + amount) > budgetLimit) {
+        _showOverbudgetAlert(currentExpense, budgetLimit, amount, transactionData);
+        return;
+      }
+    }
+
+    _executeSave(transactionData);
+  }
 
   @override
   Widget build(BuildContext context) {
-    // Kategori yang akan ditampilkan berdasarkan pilihan isExpense
-    final List<CategoryItem> categoriesToShow = isExpense ? dummyExpenseCategories : dummyIncomeCategories;
-
     return Scaffold(
-      backgroundColor: Colors.white, // Latar belakang putih seperti di gambar
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Bagian App Bar Kustom (Warna Ungu Gradient)
-          Container(
-            padding: const EdgeInsets.only(top: 48.0, bottom: 20.0, left: 16.0, right: 16.0),
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Color(0xFFE0BBE4), Color(0xFF957DAD)], // Gradient ungu
-              ),
-              borderRadius: BorderRadius.vertical(bottom: Radius.circular(30)),
+      backgroundColor: const Color(0xFFECDFF3), 
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(100),
+        child: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFFE0BBE4), Color(0xFFB7A9D8)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
-            child: Column(
-              children: [
-                Row(
+            borderRadius: BorderRadius.vertical(bottom: Radius.circular(30)),
+          ),
+          child: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            iconTheme: const IconThemeData(color: Colors.white),
+            title: Text(
+              isEditMode ? "Ubah Catatan" : "Tambah Catatan", 
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)
+            ),
+            centerTitle: true,
+          ),
+        ),
+      ),
+      body: BlocConsumer<TransactionBloc, TransactionState>(
+        listener: (context, state) {
+          if (state is TransactionActionSuccess) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(state.message)));
+            _clearInputFields();
+          } else if (state is TransactionError) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(state.message)));
+          } else if (state is TransactionAuthRequired) {
+            _showAuthModal(context);
+          }
+        },
+        buildWhen: (previous, current) =>
+            current is TransactionLoaded ||
+            current is TransactionLoading ||
+            current is TransactionInitial,
+        builder: (context, state) {
+          if (state is TransactionLoading || state is TransactionInitial) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          List<CategoryLocalSchema> categories = [];
+          if (state is TransactionLoaded) {
+            categories = isExpense ? state.expenseCategories : state.incomeCategories;
+            
+            if (isEditMode && _selectedCategory == null) {
+              try {
+                _selectedCategory = categories.firstWhere(
+                  (cat) => cat.name == widget.transaction!.categoryName
+                );
+              } catch (_) {}
+            }
+          }
+
+          return Column(
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                   const SizedBox(width: 48),
-                    const Expanded(
-                      child: Text(
-                        'Tambahkan Catatan',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                    // Placeholder untuk menyelaraskan 'Tambahkan' ke tengah
-                    const SizedBox(width: 48), 
+                    _buildFancyToggleButton("Pengeluaran", true),
+                    const SizedBox(width: 10),
+                    _buildFancyToggleButton("Pemasukan", false),
                   ],
                 ),
-                const SizedBox(height: 16),
-                // Toggle Button Pengeluaran / Pemasukan
-                _buildToggleButtons(),
-              ],
-            ),
-          ),
-
-          // Bagian Daftar Kategori
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: GridView.builder(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3, // 3 kolom seperti di gambar
-                  crossAxisSpacing: 10,
-                  mainAxisSpacing: 10,
-                  childAspectRatio: 1.0, // Membuat setiap item berbentuk kotak
+              ),
+              Expanded(
+                child: Container(
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+                  ),
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 20),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Wrap(
+                            spacing: 10,
+                            runSpacing: 10,
+                            children: [
+                              ...categories.map((cat) {
+                                return _buildCategoryRectItem(
+                                  label: cat.name,
+                                  icon: IconMapper.mapStringToIconData(cat.icon),
+                                  isSelected: _selectedCategory == cat,
+                                  onTap: () => setState(() => _selectedCategory = cat),
+                                  onLongPress: () => _showCategoryOptions(cat), 
+                                );
+                              }).toList(),
+                              _buildCategoryRectItem(
+                                label: "Tambah",
+                                icon: FontAwesomeIcons.plus,
+                                isSelected: false,
+                                isAddButton: true,
+                                onTap: () async {
+                                  await Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          AddCategoryPage(categoryType: isExpense ? 'expense' : 'income'),
+                                    ),
+                                  );
+                                  context.read<TransactionBloc>().add(LoadCategories(type: isExpense ? 'expense' : 'income'));
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      if (_selectedCategory != null)
+                        Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            children: [
+                              TextField(
+                                controller: _amountController,
+                                keyboardType: TextInputType.number,
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.digitsOnly,
+                                  ThousandsSeparatorInputFormatter(),
+                                ],
+                                decoration: InputDecoration(
+                                  hintText: "Jumlah",
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: BorderSide.none,
+                                  ),
+                                  filled: true,
+                                  fillColor: Colors.grey[100],
+                                  prefixText: "Rp ",
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              TextField(
+                                controller: _descController,
+                                decoration: InputDecoration(
+                                  hintText: "Deskripsi",
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: BorderSide.none,
+                                  ),
+                                  filled: true,
+                                  fillColor: Colors.grey[100],
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton(
+                                  onPressed: _processTransaction,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF6B1D89),
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(vertical: 15),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    isEditMode ? "Simpan Perubahan" : "Simpan Transaksi",
+                                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
-                itemCount: categoriesToShow.length + (isExpense ? 0 : 1), // Tambah 1 untuk Pengaturan di Pemasukan
-                itemBuilder: (context, index) {
-                  if (!isExpense && index == categoriesToShow.length) {
-                    // Tombol 'Pengaturan' hanya di Pemasukan, dan di akhir
-                    return _buildCategoryButton(
-                      icon: FontAwesomeIcons.gear,
-                      label: 'Tambah',
-                      onPressed: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(builder: (context) => const AddCategoryPage()),
-                          );
-                        },
-                    );
-                  }
-                  final category = categoriesToShow[index];
-                  return _buildCategoryButton(
-                    icon: category.icon,
-                    label: category.name,
-                    onPressed: () {
-                      // Aksi ketika kategori diklik
-                      print('Kategori ${category.name} (${category.type}) diklik');
-                      // TODO: Navigasi ke halaman detail penambahan transaksi dengan kategori terpilih
-                    },
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  // --- UI WIDGET HELPERS ---
+
+  void _showAuthModal(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.lock_person, size: 60, color: Color(0xFF6B1D89)),
+            const SizedBox(height: 16),
+            const Text("Login Diperlukan", 
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            const Text(
+              "Simpan catatan keuanganmu di cloud agar tidak hilang dan dapat diakses di perangkat lain.", 
+              textAlign: TextAlign.center
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context); 
+                  Navigator.pushNamed(context, '/login');
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF6B1D89),
+                  padding: const EdgeInsets.symmetric(vertical: 15),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                child: const Text("Login Sekarang", style: TextStyle(color: Colors.white)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showCategoryOptions(CategoryLocalSchema category) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 10),
+              Text(
+                "Kategori: ${category.name}",
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              const Divider(),
+              ListTile(
+                leading: const Icon(Icons.edit, color: Colors.blue),
+                title: const Text("Ubah Kategori"),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => AddCategoryPage(
+                        categoryType: category.type,
+                        category: category,
+                      ),
+                    ),
                   );
                 },
               ),
-            ),
+              ListTile(
+                leading: const Icon(Icons.delete, color: Colors.red),
+                title: const Text("Hapus Kategori"),
+                onTap: () {
+                  Navigator.pop(context);
+                  _confirmDeleteCategory(category);
+                },
+              ),
+              const SizedBox(height: 10),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _confirmDeleteCategory(CategoryLocalSchema category) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Hapus Kategori?"),
+        content: Text("Apakah Anda yakin ingin menghapus kategori '${category.name}'?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Batal"),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              context.read<TransactionBloc>().add(DeleteCategory(category.key.toString()));
+            },
+            child: const Text("Hapus", style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildToggleButtons() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.3), // Latar belakang transparan
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Expanded(
-            child: GestureDetector(
-              onTap: () {
-                setState(() {
-                  isExpense = true;
-                });
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                decoration: BoxDecoration(
-                  color: isExpense ? Colors.white : Colors.transparent,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  'Pengeluaran',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: isExpense ? const Color(0xFF957DAD) : Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
+  Widget _buildFancyToggleButton(String text, bool isForExpense) {
+    final isSelected = isExpense == isForExpense;
+    return Expanded(
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            isExpense = isForExpense;
+            _selectedCategory = null;
+            context.read<TransactionBloc>().add(LoadCategories(type: isExpense ? 'expense' : 'income'));
+          });
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+          decoration: BoxDecoration(
+            color: isSelected ? const Color(0xFF6B1D89) : Colors.white,
+            borderRadius: BorderRadius.circular(25),
+            border: Border.all(
+              color: isSelected ? Colors.transparent : Colors.grey.shade300,
+              width: 1,
             ),
           ),
-          Expanded(
-            child: GestureDetector(
-              onTap: () {
-                setState(() {
-                  isExpense = false;
-                });
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                decoration: BoxDecoration(
-                  color: !isExpense ? Colors.white : Colors.transparent,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  'Pemasukan',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: !isExpense ? const Color(0xFF957DAD) : Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
+          child: Text(
+            text,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: isSelected ? Colors.white : Colors.black87,
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
             ),
           ),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _buildCategoryButton({
-    required IconData icon,
+  Widget _buildCategoryRectItem({
     required String label,
-    required VoidCallback onPressed,
+    required IconData icon,
+    required bool isSelected,
+    required VoidCallback onTap,
+    VoidCallback? onLongPress,
+    bool isAddButton = false,
   }) {
-    return GestureDetector(
-      onTap: onPressed,
+    final screenWidth = MediaQuery.of(context).size.width;
+    final itemWidth = (screenWidth - (16 * 2) - (10 * 2)) / 3;
+
+    return InkWell(
+      onTap: onTap,
+      onLongPress: onLongPress,
       child: Container(
+        width: itemWidth,
+        height: itemWidth,
         decoration: BoxDecoration(
-          color: const Color(0xFF957DAD).withOpacity(0.1), // Warna latar belakang tombol
+          color: isSelected ? Colors.deepPurple[50] : const Color(0xFF6B1D89),
           borderRadius: BorderRadius.circular(15),
-          border: Border.all(color: const Color(0xFF957DAD).withOpacity(0.2)),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            FaIcon(icon, color: const Color(0xFF957DAD), size: 30), // Ukuran ikon
+            FaIcon(
+              icon,
+              color: isSelected ? const Color(0xFF6B1D89) : Colors.white,
+              size: 35,
+            ),
             const SizedBox(height: 8),
             Text(
               label,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Color(0xFF957DAD),
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
+              style: TextStyle(
+                color: isSelected ? const Color(0xFF6B1D89) : Colors.white,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                fontSize: 13,
               ),
-              maxLines: 2,
+              maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+// CLASS HELPER: Untuk format input angka dengan pemisah ribuan
+class ThousandsSeparatorInputFormatter extends TextInputFormatter {
+  static const separator = '.';
+
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    if (newValue.text.isEmpty) {
+      return newValue.copyWith(text: '');
+    }
+
+    String newValueText = newValue.text.replaceAll(separator, '');
+    int? value = int.tryParse(newValueText);
+    if (value == null) return oldValue;
+    
+    final formatter = NumberFormat.decimalPattern('id');
+    String newString = formatter.format(value);
+
+    return newValue.copyWith(
+      text: newString,
+      selection: TextSelection.collapsed(offset: newString.length),
     );
   }
 }

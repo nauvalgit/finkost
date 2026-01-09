@@ -31,8 +31,8 @@ class WelcomePage extends StatelessWidget {
         ),
         child: Stack(
           children: [
-            // --- LAPISAN BACKGROUND (Elemen Geometris) ---
-            // (Kode background tetap sama seperti sebelumnya)
+            
+            
             Positioned(
               top: screenHeight * 0.1,
               left: screenWidth * 0.1,
@@ -74,16 +74,16 @@ class WelcomePage extends StatelessWidget {
               ),
             ),
             
-            // --- LAPISAN KONTEN UTAMA DENGAN STRUKTUR BARU ---
+            
             SafeArea(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // --- PERUBAHAN UTAMA DIMULAI DI SINI ---
+                    
 
-                    // Spacer untuk mendorong "Welcome to" ke bawah
+                    
                     const Spacer(flex: 3),
 
                     const Text(
@@ -97,15 +97,15 @@ class WelcomePage extends StatelessWidget {
 
                     const Spacer(flex: 1),
 
-                    // Gambar wallet sekarang dipisahkan
+                    
                     Image.asset(
                       'assets/images/wallet.png',
-                      height: screenHeight * 0.35, // Anda bisa perbesar ini tanpa menggeser "Welcome to"
+                      height: screenHeight * 0.35, 
                     ),
 
                     const SizedBox(height: 20),
 
-                    // Teks Finkost sekarang dipisahkan
+                    
                     Text(
                       'FINKOST',
                       textAlign: TextAlign.center,
@@ -129,9 +129,9 @@ class WelcomePage extends StatelessWidget {
                       ),
                     ),
 
-                    const Spacer(flex: 4), // Spacer terbesar untuk mendorong tombol ke bawah
+                    const Spacer(flex: 4), 
 
-                    // Tombol
+                    
                     ElevatedButton(
                       onPressed: () {
                         Navigator.of(context).pushReplacement(
@@ -168,7 +168,7 @@ class WelcomePage extends StatelessWidget {
     );
   }
 
-  // Fungsi pembantu untuk membuat pola titik-titik
+  
   Widget _buildDotPattern({required Color color}) {
     return Column(
       children: List.generate(

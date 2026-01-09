@@ -1,3 +1,17 @@
+// === TAMBAHAN PENTING DI BAGIAN ATAS ===
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        // Mendefinisikan versi plugin Google Services secara eksplisit.
+        // Versi 4.4.1 adalah versi stabil yang umum dipakai.
+        classpath("com.google.gms:google-services:4.4.1")
+    }
+}
+// ========================================
+
 allprojects {
     repositories {
         google()

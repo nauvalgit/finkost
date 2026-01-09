@@ -12,7 +12,20 @@
           "package_name": "com.example.finkost"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "807473502832-mlf49mmeehcjjp8d14vs9ap03imr1vjv.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.finkost",
+            "certificate_hash": "2c14faaca86278aff50dd12b9d7d21f4ce42f644"
+          }
+        },
+        {
+          "client_id": "807473502832-4s608gtfoek6jn9niofhrqga825eb5jk.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyDkZ3cENNGKiHFNg0iCwLcHhbZKFbsmDPE"
@@ -20,7 +33,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "807473502832-4s608gtfoek6jn9niofhrqga825eb5jk.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "807473502832-d3g7t3ocv7ciomste3p7f2qrplk4lph2.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.finkost"
+              }
+            }
+          ]
         }
       }
     }
